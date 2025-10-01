@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin1
+  namespace: demo
+  labels:
+    app: httpbin
+    instance: httpbin1
+    demo: httpbin1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+      instance: httpbin1
+  template:
+    metadata:
+      labels:
+        app: httpbin
+        instance: httpbin1
+        demo: httpbin1
+    spec:
+      containers:
+        - name: httpbin
+          image: kennethreitz/httpbin
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /status/200
+              port: 80
+          livenessProbe:
+            httpGet:
+              path: /status/200
+              port: 80

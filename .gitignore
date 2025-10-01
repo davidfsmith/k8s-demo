@@ -1,0 +1,41 @@
+# macOS Finder metadata
+.DS_Store
+
+# Python / Jupyter (in case of notebooks or sandbox use)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Logs & temporary dirs
+*.log
+*.tmp
+*.swp
+*.bak
+
+# Observability port-forward state (PID + logs)
+observability/.pf/
+observability/.grafana.pf
+observability/.prom.pf
+.pf/
+
+# ⚠️ TLS / certs / secrets
+secrets.*
+*.pem
+*.key
+*.p12
+*.crt
+
+# mkcert output
+*_key.pem
+*_cert.pem
+
+# Helm chart cache (if used locally)
+charts/
+*.tgz
+
+# IDE/editor configs
+.vscode/
+.idea/
+*.iml

@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-httpbin
+  namespace: demo
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /httpbin1(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: httpbin1
+                port:
+                  number: 80
+          - path: /httpbin2(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: httpbin2
+                port:
+                  number: 80
