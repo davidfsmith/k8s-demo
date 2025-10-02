@@ -32,10 +32,13 @@ init:
 ingress:
 	helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 	helm repo update
-	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) -n $(INGRESS_NS) --create-namespace \
-	  --set controller.ingressClass=nginx \
-	  --set controller.metrics.enabled=true \
-	  --set controller.service.type=LoadBalancer
+	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) --namespace $(INGRESS_NS) --create-namespace \
+		--set controller.ingressClass=nginx \
+		--set controller.metrics.enabled=true \
+		--set controller.metrics.serviceMonitor.enabled=true \
+		--set controller.metrics.serviceMonitor.namespace=monitoring \
+		--set controller.metrics.serviceMonitor.additionalLabels.release=monitoring \
+		--set controller.service.type=LoadBalancer
 	kubectl -n $(INGRESS_NS) rollout status deploy/$(INGRESS_SVC) --timeout=300s
 
 apply:

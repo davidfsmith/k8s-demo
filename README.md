@@ -44,12 +44,16 @@ minikube addons disable ingress || true
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx   -n ingress-nginx --create-namespace   --set controller.ingressClass=nginx   --set controller.metrics.enabled=true   --set controller.service.type=LoadBalancer
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace \
+  --set controller.ingressClass=nginx \
+  --set controller.metrics.enabled=true \
+  --set controller.metrics.serviceMonitor.enabled=true \
+  --set controller.metrics.serviceMonitor.namespace=monitoring \
+  --set controller.metrics.serviceMonitor.additionalLabels.release=monitoring \
+  --set controller.service.type=LoadBalancer
 
 kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=300s
 ```
-
-We purposely **do not** enable the ServiceMonitor yet. We’ll add observability later.
 
 ## 3) Deploy the demo apps + Ingress
 
