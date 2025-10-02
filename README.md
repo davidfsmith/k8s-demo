@@ -37,10 +37,33 @@ Ingress (nginx)
 ## TL;DR (fast path)
 
 ```bash
-# 0) Start / enable ingress
+# Start minikube
 minikube start --driver=docker
-minikube addons enable ingress
-kubectl -n ingress-nginx wait --for=condition=available deploy/ingress-nginx-controller --timeout=180s
+```
+
+```bash
+# Install Helm ingress (metrics exposed, no ServiceMonitor yet)
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace \
+  --set controller.ingressClass=nginx \
+  --set controller.metrics.enabled=true \
+  --set controller.metrics.serviceMonitor.enabled=false \
+  --set controller.service.type=LoadBalancer
+
+# Wait for controller
+kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=240s
+
+# Enable ServiceMonitor via helm upgrade:
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx \
+  --set controller.metrics.serviceMonitor.enabled=true \
+  --set controller.metrics.serviceMonitor.namespace=monitoring \
+  --set controller.metrics.serviceMonitor.additionalLabels.release=monitoring
+```
+
+```bash
+# Wait for the controller to be ready
+kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=240s
 ```
 
 ## Deploy
@@ -117,7 +140,7 @@ Change the controller Service to `LoadBalancer` and run the tunnel. On macOS thi
 
 ```bash
 # Switch svc to LoadBalancer
-kubectl -n ingress-nginx patch svc/ingress-nginx-controller -p '{"spec":{"type":"LoadBalancer"}}'
+kubectl -n ingress-nginx get svc ingress-nginx-controller
 
 # Create the tunnel (leave this running; may need sudo)
 sudo -E minikube tunnel
@@ -147,16 +170,16 @@ If `LBIP` is `127.0.0.1`, this is normal with the Docker driver + tunnel.
 ### Friendly hostname (no /etc/hosts)
 
 ```bash
-HOST="demo.127.0.0.1.nip.io"
-kubectl -n demo patch ingress demo-httpbin --type='json'   -p='[{"op":"add","path":"/spec/rules/0/host","value":"'"$HOST"'"}]'
+K8S_HOST="demo.127.0.0.1.nip.io"
+kubectl -n demo patch ingress demo-httpbin --type='json'   -p='[{"op":"add","path":"/spec/rules/0/host","value":"'"$K8S_HOST"'"}]'
 ```
 
 When a host is set, send the Host header when curling:
 
 ```bash
 for p in httpbin1 httpbin2; do
-  echo "Testing via HOST http://$HOST/$p/get ..."
-  curl -s --noproxy '*' -H "Host: $HOST" "http://$HOST/$p/get" | jq -r '.url'
+  echo "Testing via K8S_HOST http://$K8S_HOST/$p/get ..."
+  curl -s --noproxy '*' -H "Host: $K8S_HOST" "http://$K8S_HOST/$p/get" | jq -r '.url'
 done
 ```
 
@@ -165,7 +188,7 @@ Open in a browser:
 - [http://demo.127.0.0.1.nip.io/httpbin1/get]()
 - [http://demo.127.0.0.1.nip.io/httpbin2/get]()
 
-### Optional: Local TLS for a polished demo
+### Optional: Local TLS
 
 Use `mkcert` (recommended) to generate a local-trusted cert for the hostname and add TLS to the Ingress.
 
@@ -184,7 +207,16 @@ kubectl -n demo patch ingress demo-httpbin --type='json' -p='[
 ]'
 ```
 
-Browse:
+With TLS:
+
+```bash
+for p in httpbin1 httpbin2; do
+  echo "Testing via K8S_HOST https://$K8S_HOST/$p/get ..."
+  curl -s --noproxy '*' -H "Host: $K8S_HOST" "https://$K8S_HOST/$p/get" | jq -r '.url'
+done
+```
+
+Or browse:
 
 - [https://demo.127.0.0.1.nip.io/httpbin1/get]()
 - [https://demo.127.0.0.1.nip.io/httpbin2/get]()
@@ -239,27 +271,32 @@ kubectl delete \
 
 ## Using the Makefile (root)
 
-Prefer the step-by-step flow for learning, but when you want speed, the **Makefile** at repo root gives you handy shortcuts:
+This demo can be run with the **Helm-installed ingress-nginx controller** instead of the Minikube addon.  
+Using Helm gives more control (metrics, ServiceMonitor) and avoids addon quirks.
 
 ```bash
-# Boot cluster, enable ingress, deploy demo, and wait for readiness
-make init apply wait
+# 0) Fresh cluster without addon ingress
+make init-no-addon
 
-# Quick local access via port-forward (http://127.0.0.1:8080)
-make port-forward        # foreground; Ctrl+C to stop in this terminal
-make test-pf             # curls both endpoints
+# 1) Install Helm ingress controller
+make ingress-helm-install
+make ingress-helm-wait
 
-# Clean 'cloud-like' access using a LoadBalancer + tunnel
-make lb                  # switch ingress controller Service to LoadBalancer
-sudo -E minikube tunnel  # run in another terminal; leave running
-make url test-lb         # print the LB IP and test both endpoints
+# 2) Deploy demo apps
+make apply
+make wait
 
-# Optional niceties
-make add-host            # set host to demo.127.0.0.1.nip.io (uses nip.io)
-make tls                 # create mkcert cert + enable HTTPS on the Ingress
+# 3a) Port-forward route (foreground)
+make pf-helm
+make test-pf
 
-# Inspect and tear down
-make verify
-make cleanup             # delete demo resources
-make nuke                # also revert controller Service to NodePort
+# 3b) Or LoadBalancer route
+sudo -E minikube tunnel &
+make url test-lb
+
+# 4) Cleanup
+make cleanup
+
+# 5)
+make nuke
 ```

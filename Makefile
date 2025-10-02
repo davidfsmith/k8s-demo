@@ -1,120 +1,164 @@
-.PHONY: help init apply wait port-forward pf-stop lb tunnel url add-host tls test-pf test-lb verify cleanup nuke demo-pf demo-lb
+# ---- Demo Makefile (Helm ingress ready) ----
+.PHONY: help init init-no-addon ingress-helm-install ingress-helm-wait ingress-helm-uninstall \
+        apply wait port-forward pf-helm pf-stop lb tunnel url add-host tls test-pf test-lb \
+        verify cleanup nuke demo-pf demo-lb
 
-# ==== Config (root) ====
-NAMESPACE ?= demo
-INGRESS_NS ?= ingress-nginx
-INGRESS_SVC ?= ingress-nginx-controller
-HOST ?= demo.127.0.0.1.nip.io
+# ----- Config -----
+NAMESPACE        ?= demo
+INGRESS_NS       ?= ingress-nginx
+HELM_RELEASE     ?= ingress-nginx
+HELM_CHART       ?= ingress-nginx/ingress-nginx
+INGRESS_SVC      ?= ingress-nginx-controller
+HOST             ?= demo.127.0.0.1.nip.io
+ING_NAME         ?= demo-httpbin
+
+K8S_DIR          ?= k8s-demo
+HTTPBIN1_DEPLOY  ?= $(K8S_DIR)/10-httpbin1-deploy.yaml
+HTTPBIN1_SVC     ?= $(K8S_DIR)/11-httpbin1-svc.yaml
+HTTPBIN2_DEPLOY  ?= $(K8S_DIR)/20-httpbin2-deploy.yaml
+HTTPBIN2_SVC     ?= $(K8S_DIR)/21-httpbin2-svc.yaml
+INGRESS_FILE     ?= $(K8S_DIR)/30-ingress.yaml
+NS_FILE          ?= $(K8S_DIR)/00-namespace.yaml
 
 help:
+	@echo "Demo Makefile (Helm-based ingress capable)"
+	@echo "Cluster:"
+	@echo "  init              - Start minikube & enable addon ingress (legacy path)"
+	@echo "  init-no-addon     - Start minikube without addon (use Helm controller)"
+	@echo "Ingress (Helm):"
+	@echo "  ingress-helm-install   - Install ingress-nginx via Helm (LB + metrics + ServiceMonitor)"
+	@echo "  ingress-helm-wait      - Wait for controller to be ready"
+	@echo "  ingress-helm-uninstall - Uninstall Helm ingress and delete namespace"
+	@echo "Demo:"
+	@echo "  apply            - Apply httpbin apps + ingress"
+	@echo "  wait             - Wait for demo pods to be ready"
+	@echo "Access:"
+	@echo "  pf-helm          - Port-forward Helm controller svc → http://127.0.0.1:8080 (FG)"
+	@echo "  port-forward     - Port-forward controller svc (alias of pf-helm)"
+	@echo "  lb               - Ensure controller svc is LoadBalancer"
+	@echo "  tunnel           - Print minikube tunnel hint"
+	@echo "  url              - Show LB IP and test URLs"
+	@echo "TLS/host:"
+	@echo "  add-host         - Patch Ingress host to $(HOST)"
+	@echo "  tls              - Create mkcert TLS secret and patch Ingress (requires mkcert)"
+	@echo "Tests:"
+	@echo "  test-pf          - Curl endpoints via 127.0.0.1:8080"
+	@echo "  test-lb          - Curl endpoints via LB IP"
+	@echo "Maintenance:"
+	@echo "  verify           - Show key resources"
+	@echo "  cleanup          - Delete demo k8s resources"
+	@echo "  nuke             - Reset controller svc to NodePort (cleanup ingress Helm optional)"
 	@echo ""
-	@echo "Root Makefile — httpbin demo & ingress networking"
-	@echo "Targets:"
-	@echo "  init         - Start minikube & enable ingress"
-	@echo "  apply        - Apply demo manifests in ./k8s-demo"
-	@echo "  wait         - Wait for httpbin deployments to be ready"
-	@echo "  port-forward - Port-forward ingress controller to localhost:8080 (FG)"
-	@echo "  pf-stop      - Stop any listener on localhost:8080"
-	@echo "  lb           - Patch controller Service to LoadBalancer"
-	@echo "  tunnel       - Print minikube tunnel command (run separately)"
-	@echo "  url          - Show LB IP and service details"
-	@echo "  add-host     - Add nip.io hostname to Ingress spec.rules[0].host"
-	@echo "  tls          - Create mkcert TLS & enable HTTPS on Ingress"
-	@echo "  test-pf      - Test endpoints via port-forward (http://127.0.0.1:8080)"
-	@echo "  test-lb      - Test endpoints via LB IP (requires tunnel or MetalLB)"
-	@echo "  verify       - Show controller, ingress, endpoints"
-	@echo "  cleanup      - Remove demo resources"
-	@echo "  nuke         - cleanup + revert controller svc to NodePort"
-	@echo "  demo-pf      - init+apply+wait then foreground port-forward"
-	@echo "  demo-lb      - init+apply+wait then switch to LoadBalancer"
-	@echo ""
+	@echo "Happy path (Helm): make init-no-addon ingress-helm-install ingress-helm-wait apply wait pf-helm test-pf"
 
+# ----- Cluster bring-up -----
 init:
 	minikube start --driver=docker
 	minikube addons enable ingress
-	kubectl -n $(INGRESS_NS) wait --for=condition=available deploy/$(INGRESS_SVC) --timeout=180s
+	kubectl -n $(INGRESS_NS) wait --for=condition=available deploy/$(INGRESS_SVC) --timeout=240s
 
+init-no-addon:
+	minikube start --driver=docker
+	@echo "Ingress addon not enabled. Next: 'make ingress-helm-install'."
+
+# ----- Helm-based ingress controller -----
+ingress-helm-install:
+	helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+	helm repo update
+	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) -n $(INGRESS_NS) --create-namespace \
+	  --set controller.ingressClass=nginx \
+	  --set controller.metrics.enabled=true \
+	  --set controller.metrics.serviceMonitor.enabled=true \
+	  --set controller.metrics.serviceMonitor.namespace=monitoring \
+	  --set controller.metrics.serviceMonitor.additionalLabels.release=monitoring \
+	  --set controller.service.type=LoadBalancer
+	@echo "Helm ingress installed. Consider: 'sudo -E minikube tunnel' for LoadBalancer IP."
+
+ingress-helm-wait:
+	kubectl -n $(INGRESS_NS) rollout status deploy/$(INGRESS_SVC) --timeout=300s
+
+ingress-helm-uninstall:
+	-helm uninstall $(HELM_RELEASE) -n $(INGRESS_NS) || true
+	-kubectl delete ns $(INGRESS_NS) --wait=false || true
+
+# ----- Demo app -----
 apply:
-	kubectl apply -f 00-namespace.yaml
-	kubectl apply -f 10-httpbin1-deploy.yaml -f 11-httpbin1-svc.yaml
-	kubectl apply -f 20-httpbin2-deploy.yaml -f 21-httpbin2-svc.yaml
-	kubectl apply -f 30-ingress.yaml
+	kubectl apply -f $(NS_FILE)
+	kubectl apply -f $(HTTPBIN1_DEPLOY) -f $(HTTPBIN1_SVC)
+	kubectl apply -f $(HTTPBIN2_DEPLOY) -f $(HTTPBIN2_SVC)
+	kubectl apply -f $(INGRESS_FILE)
 
 wait:
-	kubectl -n $(NAMESPACE) rollout status deploy/httpbin1 --timeout=120s
-	kubectl -n $(NAMESPACE) rollout status deploy/httpbin2 --timeout=120s
+	kubectl -n $(NAMESPACE) rollout status deploy/httpbin1 --timeout=180s
+	kubectl -n $(NAMESPACE) rollout status deploy/httpbin2 --timeout=180s
 
-port-forward:
+# ----- Access paths -----
+pf-helm:
 	@echo "Forwarding http://127.0.0.1:8080 → $(INGRESS_NS)/svc/$(INGRESS_SVC):80 (Ctrl+C to stop)"
 	kubectl -n $(INGRESS_NS) port-forward svc/$(INGRESS_SVC) 8080:80
 
-pf-stop:
-	-@lsof -i :8080 -sTCP:LISTEN -t | xargs -r kill
+port-forward: pf-helm
 
 lb:
-	kubectl -n $(INGRESS_NS) patch svc $(INGRESS_SVC) -p '{"spec":{"type":"LoadBalancer"}}'
+	kubectl -n $(INGRESS_NS) patch svc $(INGRESS_SVC) -p '{"spec":{"type":"LoadBalancer"}}' --type=merge
 
 tunnel:
-	@echo "Run this in a separate terminal (may need sudo):"
+	@echo "Run this in another terminal with sudo:"
 	@echo "  sudo -E minikube tunnel"
 
 url:
-	@kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o wide
-	@echo "LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
-	@echo "If LBIP is empty, wait for External IP (or ensure tunnel is running)."
+	@echo "LB IP (if tunnel running):"
+	@LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}'); \
+	echo $$LBIP; \
+	echo "Try:"; \
+	echo "  http://$$LBIP/httpbin1/get"; \
+	echo "  http://$$LBIP/httpbin2/get"
 
+# ----- Host & TLS -----
 add-host:
-	kubectl -n $(NAMESPACE) patch ingress demo-httpbin --type='json' \
+	kubectl -n $(NAMESPACE) patch ingress $(ING_NAME) --type='json' \
 	  -p='[{"op":"add","path":"/spec/rules/0/host","value":"$(HOST)"}]'
-	@echo "Patched Ingress host to $(HOST)"
-	@echo "Example curl:"
-	@echo "  LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}') && \\"
-	@echo "  curl -s --noproxy '*' -H \"Host: $(HOST)\" \"http://$$LBIP/httpbin1/get\" | jq -r '.url'"
+	@echo "Host set to $(HOST)."
 
 tls:
-	@echo "Generating local TLS with mkcert for $(HOST) ..."
-	@which mkcert >/dev/null || (echo "mkcert not found. Install mkcert first." && exit 1)
+	@which mkcert >/dev/null || (echo "mkcert not found. Install mkcert or skip TLS."; exit 1)
 	mkcert -install
 	mkcert $(HOST)
-	kubectl -n $(NAMESPACE) create secret tls demo-tls \
-	  --cert=$(HOST).pem \
-	  --key=$(HOST)-key.pem --dry-run=client -o yaml | kubectl apply -f -
-	kubectl -n $(NAMESPACE) patch ingress demo-httpbin --type='json' -p='[ \
-	  {"op":"add","path":"/spec/tls","value":[{"hosts":["$(HOST)"],"secretName":"demo-tls"}]}, \
-	  {"op":"add","path":"/metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect","value":"true"} \
-	]'
-	@echo "Browse: https://$(HOST)/httpbin1/get"
+	kubectl -n $(NAMESPACE) delete secret demo-tls --ignore-not-found
+	kubectl -n $(NAMESPACE) create secret tls demo-tls --cert=$(HOST).pem --key=$(HOST)-key.pem
+	kubectl -n $(NAMESPACE) patch ingress $(ING_NAME) --type='json' \
+	  -p='[{"op":"add","path":"/spec/tls","value":[{"hosts":["$(HOST)"],"secretName":"demo-tls"}]}]'
+	@echo "TLS enabled for https://$(HOST)/"
 
+# ----- Tests -----
 test-pf:
-	@for p in httpbin1 httpbin2; do \
-	  echo "Testing http://127.0.0.1:8080/$$p/get"; \
-	  curl -s "http://127.0.0.1:8080/$$p/get" | jq -r '.url' || true; \
-	done
+	@echo "Testing via 127.0.0.1:8080"
+	@curl -s http://127.0.0.1:8080/httpbin1/get | jq -r '.url' || true
+	@curl -s http://127.0.0.1:8080/httpbin2/get | jq -r '.url' || true
 
 test-lb:
 	@LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}'); \
-	if [ -z "$$LBIP" ]; then echo "No LB IP yet. Run 'make url' and ensure 'minikube tunnel' is active."; exit 1; fi; \
-	for p in httpbin1 httpbin2; do \
-	  echo "Testing http://$$LBIP/$$p/get"; \
-	  curl -s --noproxy '*' "http://$$LBIP/$$p/get" | jq -r '.url' || true; \
-	done
+	echo "LBIP=$$LBIP"; \
+	curl -s "http://$$LBIP/httpbin1/get" | jq -r '.url' || true; \
+	curl -s "http://$$LBIP/httpbin2/get" | jq -r '.url' || true
 
+# ----- Info / cleanup -----
 verify:
-	kubectl -n $(NAMESPACE) get deploy,svc,ingress
-	kubectl -n $(INGRESS_NS) get pods,svc
-	kubectl -n $(NAMESPACE) get ep httpbin1 httpbin2
-	kubectl -n $(NAMESPACE) describe ingress demo-httpbin | sed -n '1,200p'
+	@echo "--- Ingress Controller (svc) ---"
+	kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o wide
+	@echo "--- Pods (controller) ---"
+	kubectl -n $(INGRESS_NS) get pods -l app.kubernetes.io/component=controller -o wide
+	@echo "--- Demo ---"
+	kubectl -n $(NAMESPACE) get pods,svc,ingress
 
 cleanup:
-	-kubectl delete -f 30-ingress.yaml
-	-kubectl delete -f 21-httpbin2-svc.yaml -f 20-httpbin2-deploy.yaml
-	-kubectl delete -f 11-httpbin1-svc.yaml -f 10-httpbin1-deploy.yaml
-	-kubectl delete -f 00-namespace.yaml
+	-kubectl delete -f $(INGRESS_FILE) || true
+	-kubectl delete -f $(HTTPBIN2_SVC) || true
+	-kubectl delete -f $(HTTPBIN2_DEPLOY) || true
+	-kubectl delete -f $(HTTPBIN1_SVC) || true
+	-kubectl delete -f $(HTTPBIN1_DEPLOY) || true
+	-kubectl delete -f $(NS_FILE) || true
 
 nuke: cleanup
-	-kubectl -n $(INGRESS_NS) patch svc $(INGRESS_SVC) -p '{"spec":{"type":"NodePort"}}'
-
-demo-pf: init apply wait port-forward
-
-demo-lb: init apply wait lb
-	@echo "Now run 'sudo -E minikube tunnel' in another terminal, then 'make url test-lb'."
+	-kubectl -n $(INGRESS_NS) patch svc $(INGRESS_SVC) -p '{"spec":{"type":"NodePort"}}' --type=merge || true
+	@echo "Demo cleaned. Controller svc set back to NodePort."
