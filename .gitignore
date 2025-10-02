@@ -14,12 +14,6 @@ __pycache__/
 *.swp
 *.bak
 
-# Observability port-forward state (PID + logs)
-observability/.pf/
-observability/.grafana.pf
-observability/.prom.pf
-.pf/
-
 # ⚠️ TLS / certs / secrets
 secrets.*
 *.pem

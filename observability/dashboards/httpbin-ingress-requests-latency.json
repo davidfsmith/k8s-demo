@@ -1,0 +1,59 @@
+{
+  "title": "HTTPBin \u2014 Ingress Requests + Latency",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Requests/sec by Ingress + Path",
+      "targets": [
+        {
+          "expr": "sum by (ingress, path) (rate(nginx_ingress_controller_requests_total[1m])) or sum by (ingress, path) (rate(nginx_ingress_controller_requests[1m]))",
+          "legendFormat": "{{ingress}} {{path}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests (5m increase) by Ingress + Path",
+      "targets": [
+        {
+          "expr": "sum by (ingress, path) (increase(nginx_ingress_controller_requests_total[5m])) or sum by (ingress, path) (increase(nginx_ingress_controller_requests[5m]))",
+          "legendFormat": "{{ingress}} {{path}}",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 Request Latency (s) \u2014 if bucket metric exists",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(nginx_ingress_controller_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    }
+  ]
+}

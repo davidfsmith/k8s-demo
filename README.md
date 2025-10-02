@@ -1,302 +1,158 @@
-# Kubernetes Demo – Minikube + Ingress + 2x httpbin Apps
+# HTTPBin + NGINX Ingress (Helm) Demo
 
-Spin up a tiny demo on Minikube with an NGINX Ingress routing to **two httpbin services** on separate paths.
-
-```
-Ingress (nginx)
- ├── /httpbin1 → Service httpbin1 → Deployment httpbin1 (kennethreitz/httpbin)
- └── /httpbin2 → Service httpbin2 → Deployment httpbin2 (kennethreitz/httpbin)
-
-                   ┌─────────────────────────┐
-                   │   Minikube Node         │
-                   │   (127.0.0.1 via tunnel)│
-                   └─────────────┬───────────┘
-                                 │
-                         Ingress Controller
-                         (nginx-ingress)
-                                 │
-          ┌──────────────────────┴───────────────────────┐
-          │                                              │
-   /httpbin1 → Service httpbin1                  /httpbin2 → Service httpbin2
-               (ClusterIP)                                  (ClusterIP)
-          │                                              │
-   ┌──────┴─────────┐                            ┌───────┴─────────┐
-   │ Deployment     │                            │ Deployment      │
-   │ httpbin1       │                            │ httpbin2        │
-   │ (kennethreitz/ │                            │ (kennethreitz/  │
-   │  httpbin pod)  │                            │  httpbin pod)   │
-   └────────────────┘                            └─────────────────┘
-```
+A minimal demo that deploys two HTTPBin apps behind the **Helm-installed NGINX Ingress Controller** on Minikube.
+Manual steps come first; a Makefile is provided at the end for shortcuts.
 
 ## Prerequisites
-- [minikube](https://minikube.sigs.k8s.io/docs/) (Docker driver recommended)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- [jq](https://jqlang.org) (for pretty test output)
-- [mkcert](https://github.com/FiloSottile/mkcert) (Optional) if you want local TLS
 
-## TL;DR (fast path)
+- [minikube](https://minikube.sigs.k8s.io/docs/) (Docker driver recommended)
+- [helm](https://helm.sh)
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/)
+- [jq](https://jqlang.org) (optional, used in a few examples)
+
+Project structure (relevant bits):
+
+```
+k8s-demo/
+  00-namespace.yaml
+  10-httpbin1-deploy.yaml
+  11-httpbin1-svc.yaml
+  20-httpbin2-deploy.yaml
+  21-httpbin2-svc.yaml
+  30-ingress.yaml
+observability/
+  dashboards/               # JSON dashboards to import into Grafana
+  README.md
+```
+
+## 1) Start a clean cluster
+
+We use the Helm-based ingress controller (not the Minikube addon).
 
 ```bash
-# Start minikube
 minikube start --driver=docker
 ```
 
+If you previously enabled the addon:
 ```bash
-# Install Helm ingress (metrics exposed, no ServiceMonitor yet)
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx --create-namespace \
-  --set controller.ingressClass=nginx \
-  --set controller.metrics.enabled=true \
-  --set controller.metrics.serviceMonitor.enabled=false \
-  --set controller.service.type=LoadBalancer
-
-# Wait for controller
-kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=240s
-
-# Enable ServiceMonitor via helm upgrade:
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  -n ingress-nginx \
-  --set controller.metrics.serviceMonitor.enabled=true \
-  --set controller.metrics.serviceMonitor.namespace=monitoring \
-  --set controller.metrics.serviceMonitor.additionalLabels.release=monitoring
+minikube addons disable ingress || true
 ```
+
+## 2) Install ingress-nginx via Helm (LoadBalancer, metrics exposed)
 
 ```bash
-# Wait for the controller to be ready
-kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=240s
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx   -n ingress-nginx --create-namespace   --set controller.ingressClass=nginx   --set controller.metrics.enabled=true   --set controller.service.type=LoadBalancer
+
+kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=300s
 ```
 
-## Deploy
+We purposely **do not** enable the ServiceMonitor yet. We’ll add observability later.
+
+## 3) Deploy the demo apps + Ingress
 
 ```bash
-kubectl apply -f 00-namespace.yaml
-kubectl apply -f 10-httpbin1-deploy.yaml -f 11-httpbin1-svc.yaml
-kubectl apply -f 20-httpbin2-deploy.yaml -f 21-httpbin2-svc.yaml
-kubectl apply -f 30-ingress.yaml
-
-# Wait for pods
-kubectl -n demo rollout status deploy/httpbin1 --timeout=120s
-kubectl -n demo rollout status deploy/httpbin2 --timeout=120s
+kubectl apply -f .
+kubectl -n demo rollout status deploy/httpbin1 --timeout=180s
+kubectl -n demo rollout status deploy/httpbin2 --timeout=180s
 ```
 
-## Access – Option A (recommended for demos): Port-forward the controller
-
-```
-Browser / curl
-    │  http://127.0.0.1:8080/…
-    ▼
-Local port-forward
-(kubectl -n ingress-nginx port-forward
- svc/ingress-nginx-controller 8080:80)
-    │  TCP 127.0.0.1:8080 → :80 in cluster
-    ▼
-Ingress Controller (nginx)
-    │  /httpbin1, /httpbin2 rules (regex + rewrite)
-    ├──────────────► Service httpbin1 (ClusterIP) ─► Pod: httpbin1
-    └──────────────► Service httpbin2 (ClusterIP) ─► Pod: httpbin2
-```
-
-No networking faff, always works locally.
+Ensure your Ingress uses the Helm controller’s class:
 
 ```bash
-# Terminal 1
+kubectl -n demo get ingress demo-httpbin -o jsonpath='{.spec.ingressClassName}{"\n"}'
+# If empty/different, set it:
+kubectl -n demo patch ingress demo-httpbin --type=merge -p '{"spec":{"ingressClassName":"nginx"}}'
+```
+
+## 4) Test routing
+
+### Option A — Port-forward (fast path)
+
+```bash
 kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80
+# New terminal:
+curl -s http://127.0.0.1:8080/httpbin1/get | jq -r .url
+curl -s http://127.0.0.1:8080/httpbin2/get | jq -r .url
 ```
 
-**Quick test (one-liner):**
+#### Gnerate traffic
 
 ```bash
-for p in httpbin1 httpbin2; do 
-  echo "Testing /$p ..."
-  curl -s "http://127.0.0.1:8080/$p/get" | jq -r '.url'
+for i in {1..100}; do
+  curl -s "http://127.0.0.1:8080/httpbin1/status/200" >/dev/null
+  curl -s "http://127.0.0.1:8080/httpbin2/status/200" >/dev/null
 done
 ```
 
-Open in a browser:
-
-- http://127.0.0.1:8080/httpbin1/get  
-- http://127.0.0.1:8080/httpbin2/get
-
-## Access – Option B (clean demo URL): LoadBalancer via `minikube tunnel`
-
-```
-Browser / curl
-    │  http://127.0.0.1/…   (LB IP often becomes 127.0.0.1)
-    ▼
-minikube tunnel
-(emulates cloud LB; binds host :80 → Service:80)
-    │
-    ▼
-Service: ingress-nginx-controller (LoadBalancer)
-    │  forwards to controller Pods
-    ▼
-Ingress Controller (nginx)
-    │  /httpbin1, /httpbin2 rules (regex + rewrite)
-    ├──────────────► Service httpbin1 (ClusterIP) ─► Pod: httpbin1
-    └──────────────► Service httpbin2 (ClusterIP) ─► Pod: httpbin2
-```
-
-Change the controller Service to `LoadBalancer` and run the tunnel. On macOS this often binds to **127.0.0.1** (expected).
+### Option B — LoadBalancer (recommended)
 
 ```bash
-# Switch svc to LoadBalancer
-kubectl -n ingress-nginx get svc ingress-nginx-controller
-
-# Create the tunnel (leave this running; may need sudo)
+# Terminal A
 sudo -E minikube tunnel
-```
 
-New terminal:
-
-```bash
-# Wait for External IP and test
-kubectl -n ingress-nginx get svc ingress-nginx-controller --watch
-```
-
-Once you see an External IP, capture and test:
-
-```bash
+# Terminal B
 LBIP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-echo "LB IP: $LBIP"
+echo "$LBIP"
+curl -s "http://$LBIP/httpbin1/get" | jq -r .url
+curl -s "http://$LBIP/httpbin2/get" | jq -r .url
+```
 
-for p in httpbin1 httpbin2; do
-  echo "Testing via LB http://$LBIP/$p/get ..."
-  curl -s --noproxy '*' "http://$LBIP/$p/get" | jq -r '.url'
+404 at `/` is expected. Use `/httpbin1/*` and `/httpbin2/*` paths.
+
+#### Gnerate traffic
+
+
+```bash
+for i in {1..100}; do
+  curl -s "http://$LBIP/httpbin1/status/200" >/dev/null
+  curl -s "http://$LBIP/httpbin2/status/200" >/dev/null
 done
 ```
 
-If `LBIP` is `127.0.0.1`, this is normal with the Docker driver + tunnel.
 
-### Friendly hostname (no /etc/hosts)
+## 5) Add observability (Prometheus + Grafana)
 
-```bash
-K8S_HOST="demo.127.0.0.1.nip.io"
-kubectl -n demo patch ingress demo-httpbin --type='json'   -p='[{"op":"add","path":"/spec/rules/0/host","value":"'"$K8S_HOST"'"}]'
-```
+Head to `observability/README.md` for clean, step-by-step instructions:
+- Install `kube-prometheus-stack`
+- Enable the ingress ServiceMonitor (Helm upgrade)
+- Port-forward Grafana & Prometheus
+- Import dashboards from `observability/dashboards/`
 
-When a host is set, send the Host header when curling:
+## Using the Makefile (shortcuts)
 
-```bash
-for p in httpbin1 httpbin2; do
-  echo "Testing via K8S_HOST http://$K8S_HOST/$p/get ..."
-  curl -s --noproxy '*' -H "Host: $K8S_HOST" "http://$K8S_HOST/$p/get" | jq -r '.url'
-done
-```
-
-Open in a browser:
-
-- [http://demo.127.0.0.1.nip.io/httpbin1/get]()
-- [http://demo.127.0.0.1.nip.io/httpbin2/get]()
-
-### Optional: Local TLS
-
-Use `mkcert` (recommended) to generate a local-trusted cert for the hostname and add TLS to the Ingress.
+The Makefile mirrors the manual steps above.
 
 ```bash
-# Install local CA and issue a cert
-mkcert -install
-mkcert demo.127.0.0.1.nip.io
+# 0) Start cluster (no addon path)
+make init
 
-# Create TLS secret
-kubectl -n demo create secret tls demo-tls   --cert=demo.127.0.0.1.nip.io.pem   --key=demo.127.0.0.1.nip.io-key.pem
+# 1) Install Helm ingress controller (LB + metrics)
+make ingress
 
-# Patch Ingress to enable TLS and force HTTPS
-kubectl -n demo patch ingress demo-httpbin --type='json' -p='[
-  {"op":"add","path":"/spec/tls","value":[{"hosts":["demo.127.0.0.1.nip.io"],"secretName":"demo-tls"}]},
-  {"op":"add","path":"/metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect","value":"true"}
-]'
-```
-
-With TLS:
-
-```bash
-for p in httpbin1 httpbin2; do
-  echo "Testing via K8S_HOST https://$K8S_HOST/$p/get ..."
-  curl -s --noproxy '*' -H "Host: $K8S_HOST" "https://$K8S_HOST/$p/get" | jq -r '.url'
-done
-```
-
-Or browse:
-
-- [https://demo.127.0.0.1.nip.io/httpbin1/get]()
-- [https://demo.127.0.0.1.nip.io/httpbin2/get]()
-
-> If you prefer a non-localhost External IP, enable the **MetalLB** addon and configure a pool (e.g., `192.168.49.100-192.168.49.110`). This requires your host to route to the Minikube subnet (VPNs often block this).
-
-```bash
-minikube addons enable metallb
-minikube addons configure metallb   # follow prompts to set an IP range
-kubectl -n ingress-nginx patch svc ingress-nginx-controller   -p '{"spec":{"type":"LoadBalancer","externalTrafficPolicy":"Cluster"}}'
-```
-
-## Verify
-
-```bash
-kubectl -n demo get deploy,svc,ingress
-kubectl -n ingress-nginx get pods,svc
-kubectl -n demo describe ingress demo-httpbin | sed -n '1,200p'
-```
-
-## Troubleshooting
-
-- **Ingress won’t create**: ensure the regex paths start with `/` and `pathType: ImplementationSpecific`, and `use-regex: "true"` is set.
-- **Blank response on LB/127.0.0.1**: verify the controller is selected by your Ingress.
-  - Check available classes: `kubectl get ingressclass -o wide`
-  - The manifest uses `ingressClassName: nginx`. If your controller expects a different class (e.g. `ingress-nginx`), patch it:
-```
-kubectl -n demo patch ingress demo-httpbin -p '{"spec":{"ingressClassName":"ingress-nginx"}}'
-```
-- **404s from ingress**: endpoints might not be ready—re-try after pods are available, or run:
-```
-kubectl -n demo get ep httpbin1 httpbin2
-```
-- **NodePort doesn’t work**: often due to VPN route policies. Prefer **Option A** or **B**.
-  - To test from inside the node: `minikube ssh -- "curl -I http://$(minikube ip):$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}')/"`
-- **Recreate the ingress cleanly**:
-```
-kubectl -n demo delete ingress demo-httpbin --ignore-not-found
-kubectl apply -f 30-ingress.yaml
-```
-
-## Cleanup
-
-```bash
-kubectl delete \
-  -f 30-ingress.yaml \
-  -f 21-httpbin2-svc.yaml -f 20-httpbin2-deploy.yaml \
-  -f 11-httpbin1-svc.yaml -f 10-httpbin1-deploy.yaml \
-  -f 00-namespace.yaml
-```
-
-
-## Using the Makefile (root)
-
-This demo can be run with the **Helm-installed ingress-nginx controller** instead of the Minikube addon.  
-Using Helm gives more control (metrics, ServiceMonitor) and avoids addon quirks.
-
-```bash
-# 0) Fresh cluster without addon ingress
-make init-no-addon
-
-# 1) Install Helm ingress controller
-make ingress-helm-install
-make ingress-helm-wait
-
-# 2) Deploy demo apps
+# 2) Deploy demo apps + ingress
 make apply
 make wait
 
-# 3a) Port-forward route (foreground)
-make pf-helm
+# 3a) Port-forward and test
+make pf
 make test-pf
 
-# 3b) Or LoadBalancer route
+# 3b) Or use LoadBalancer + tunnel
 sudo -E minikube tunnel &
-make url test-lb
+make url
+make test-lb
 
-# 4) Cleanup
-make cleanup
-
-# 5)
-make nuke
+# 4) Clean up demo
+make clean
 ```
+
+See target list: `make help`.
+
+## Troubleshooting
+
+- Ensure `spec.ingressClassName: nginx` on the demo Ingress.
+- If LB curls time out, confirm tunnel is running and the Service has an external IP.
+- For metrics on the controller: `kubectl -n ingress-nginx exec -it <pod> -- wget -qO- http://127.0.0.1:10254/metrics | head`

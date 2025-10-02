@@ -1,0 +1,156 @@
+{
+  "title": "Ingress NGINX \u2014 Overview",
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Requests/sec",
+      "targets": [
+        {
+          "expr": "sum(rate(nginx_ingress_controller_requests_total[1m])) or sum(rate(nginx_ingress_controller_requests[1m]))",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests/sec by Ingress + Path",
+      "targets": [
+        {
+          "expr": "sum by (ingress, path) (rate(nginx_ingress_controller_requests_total[1m])) or sum by (ingress, path) (rate(nginx_ingress_controller_requests[1m]))",
+          "legendFormat": "{{ingress}} {{path}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 9,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors/sec by Status",
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(nginx_ingress_controller_requests_total[1m])) or sum by (status) (rate(nginx_ingress_controller_requests[1m]))",
+          "legendFormat": "status {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Active Connections",
+      "targets": [
+        {
+          "expr": "nginx_ingress_controller_nginx_process_connections{state=\"active\"}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 9
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections by State",
+      "targets": [
+        {
+          "expr": "nginx_ingress_controller_nginx_process_connections",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Process Requests/sec (overall)",
+      "targets": [
+        {
+          "expr": "rate(nginx_ingress_controller_nginx_process_requests_total[1m])",
+          "legendFormat": "rps",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections/sec (accepted vs handled)",
+      "targets": [
+        {
+          "expr": "rate(nginx_ingress_controller_nginx_process_connections_total[1m])",
+          "legendFormat": "{{state}}/s",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingress Targets Health (Prometheus up)",
+      "targets": [
+        {
+          "expr": "up{job=~\".*ingress.*\"}",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      }
+    }
+  ]
+}
