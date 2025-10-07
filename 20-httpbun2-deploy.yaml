@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: httpbin1
+  name: httpbun2
   namespace: demo
   labels:
-    app: httpbin
-    instance: httpbin1
-    demo: httpbin1
+    app: httpbun
+    instance: httpbun2
+    demo: httpbun2
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: httpbin
-      instance: httpbin1
+      app: httpbun
+      instance: httpbun2
   template:
     metadata:
       labels:
-        app: httpbin
-        instance: httpbin1
-        demo: httpbin1
+        app: httpbun
+        instance: httpbun2
+        demo: httpbun2
     spec:
       containers:
-        - name: httpbin
-          image: kennethreitz/httpbin
+        - name: httpbun
+          image: sharat87/httpbun
           ports:
             - containerPort: 80
           readinessProbe:

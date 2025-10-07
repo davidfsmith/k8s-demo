@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: demo-httpbin
+  name: demo-httpbun
   namespace: demo
   annotations:
     nginx.ingress.kubernetes.io/use-regex: "true"
@@ -11,17 +11,17 @@ spec:
   rules:
     - http:
         paths:
-          - path: /httpbin1(/|$)(.*)
+          - path: /httpbun1(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: httpbin1
+                name: httpbun1
                 port:
                   number: 80
-          - path: /httpbin2(/|$)(.*)
+          - path: /httpbun2(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
               service:
-                name: httpbin2
+                name: httpbun2
                 port:
                   number: 80

@@ -1,6 +1,6 @@
-# HTTPBin + NGINX Ingress (Helm) Demo
+# httpbun + NGINX Ingress (Helm) Demo
 
-A minimal demo that deploys two HTTPBin apps behind the **Helm-installed NGINX Ingress Controller** on Minikube.
+A minimal demo that deploys two httpbun apps behind the **Helm-installed NGINX Ingress Controller** on Minikube.
 Manual steps come first; a Makefile is provided at the end for shortcuts.
 
 ## Prerequisites
@@ -15,10 +15,10 @@ Project structure (relevant bits):
 ```
 k8s-demo/
   00-namespace.yaml
-  10-httpbin1-deploy.yaml
-  11-httpbin1-svc.yaml
-  20-httpbin2-deploy.yaml
-  21-httpbin2-svc.yaml
+  10-httpbun1-deploy.yaml
+  11-httpbun1-svc.yaml
+  20-httpbun2-deploy.yaml
+  21-httpbun2-svc.yaml
   30-ingress.yaml
 observability/
   dashboards/               # JSON dashboards to import into Grafana
@@ -59,16 +59,16 @@ kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeou
 
 ```bash
 kubectl apply -f .
-kubectl -n demo rollout status deploy/httpbin1 --timeout=180s
-kubectl -n demo rollout status deploy/httpbin2 --timeout=180s
+kubectl -n demo rollout status deploy/httpbun1 --timeout=180s
+kubectl -n demo rollout status deploy/httpbun2 --timeout=180s
 ```
 
 Ensure your Ingress uses the Helm controller’s class:
 
 ```bash
-kubectl -n demo get ingress demo-httpbin -o jsonpath='{.spec.ingressClassName}{"\n"}'
+kubectl -n demo get ingress demo-httpbun -o jsonpath='{.spec.ingressClassName}{"\n"}'
 # If empty/different, set it:
-kubectl -n demo patch ingress demo-httpbin --type=merge -p '{"spec":{"ingressClassName":"nginx"}}'
+kubectl -n demo patch ingress demo-httpbun --type=merge -p '{"spec":{"ingressClassName":"nginx"}}'
 ```
 
 ## 4) Test routing
@@ -78,16 +78,16 @@ kubectl -n demo patch ingress demo-httpbin --type=merge -p '{"spec":{"ingressCla
 ```bash
 kubectl -n ingress-nginx port-forward svc/ingress-nginx-controller 8080:80
 # New terminal:
-curl -s http://127.0.0.1:8080/httpbin1/get | jq -r .url
-curl -s http://127.0.0.1:8080/httpbin2/get | jq -r .url
+curl -s http://127.0.0.1:8080/httpbun1/get | jq -r .url
+curl -s http://127.0.0.1:8080/httpbun2/get | jq -r .url
 ```
 
 #### Gnerate traffic
 
 ```bash
 for i in {1..100}; do
-  curl -s "http://127.0.0.1:8080/httpbin1/status/200" >/dev/null
-  curl -s "http://127.0.0.1:8080/httpbin2/status/200" >/dev/null
+  curl -s "http://127.0.0.1:8080/httpbun1/status/200" >/dev/null
+  curl -s "http://127.0.0.1:8080/httpbun2/status/200" >/dev/null
 done
 ```
 
@@ -100,19 +100,19 @@ sudo -E minikube tunnel
 # Terminal B
 LBIP=$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "$LBIP"
-curl -s "http://$LBIP/httpbin1/get" | jq -r .url
-curl -s "http://$LBIP/httpbin2/get" | jq -r .url
+curl -s "http://$LBIP/httpbun1/get" | jq -r .url
+curl -s "http://$LBIP/httpbun2/get" | jq -r .url
 ```
 
-404 at `/` is expected. Use `/httpbin1/*` and `/httpbin2/*` paths.
+404 at `/` is expected. Use `/httpbun1/*` and `/httpbun2/*` paths.
 
 #### Gnerate traffic
 
 
 ```bash
 for i in {1..100}; do
-  curl -s "http://$LBIP/httpbin1/status/200" >/dev/null
-  curl -s "http://$LBIP/httpbin2/status/200" >/dev/null
+  curl -s "http://$LBIP/httpbun1/status/200" >/dev/null
+  curl -s "http://$LBIP/httpbun2/status/200" >/dev/null
 done
 ```
 

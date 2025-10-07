@@ -45,28 +45,28 @@ apply:
 	kubectl apply -f $(K8S_DIR)/
 
 wait:
-	kubectl -n $(NAMESPACE) rollout status deploy/httpbin1 --timeout=180s
-	kubectl -n $(NAMESPACE) rollout status deploy/httpbin2 --timeout=180s
+	kubectl -n $(NAMESPACE) rollout status deploy/httpbun1 --timeout=180s
+	kubectl -n $(NAMESPACE) rollout status deploy/httpbun2 --timeout=180s
 
 pf:
 	@echo "Forwarding http://127.0.0.1:8080 → $(INGRESS_NS)/svc/$(INGRESS_SVC):80 (Ctrl+C to stop)"
 	kubectl -n $(INGRESS_NS) port-forward svc/$(INGRESS_SVC) 8080:80
 
 test-pf:
-	@curl -s http://127.0.0.1:8080/httpbin1/get | jq -r .url || true
-	@curl -s http://127.0.0.1:8080/httpbin2/get | jq -r .url || true
+	@curl -s http://127.0.0.1:8080/httpbun1/get | jq -r .url || true
+	@curl -s http://127.0.0.1:8080/httpbun2/get | jq -r .url || true
 
 url:
 	@LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}'); \
 	echo "LBIP=$$LBIP"; \
 	echo "Try:"; \
-	echo "  http://$$LBIP/httpbin1/get"; \
-	echo "  http://$$LBIP/httpbin2/get"
+	echo "  http://$$LBIP/httpbun1/get"; \
+	echo "  http://$$LBIP/httpbun2/get"
 
 test-lb:
 	@LBIP=$$(kubectl -n $(INGRESS_NS) get svc $(INGRESS_SVC) -o jsonpath='{.status.loadBalancer.ingress[0].ip}'); \
-	curl -s "http://$$LBIP/httpbin1/get" | jq -r .url || true; \
-	curl -s "http://$$LBIP/httpbin2/get" | jq -r .url || true
+	curl -s "http://$$LBIP/httpbun1/get" | jq -r .url || true; \
+	curl -s "http://$$LBIP/httpbun2/get" | jq -r .url || true
 
 verify:
 	@echo "--- Ingress Controller ---"
@@ -76,8 +76,8 @@ verify:
 
 clean:
 	-kubectl delete -f $(ING_FILE) || true
-	-kubectl -n $(NAMESPACE) delete svc httpbin1 httpbin2 --ignore-not-found
-	-kubectl -n $(NAMESPACE) delete deploy httpbin1 httpbin2 --ignore-not-found
+	-kubectl -n $(NAMESPACE) delete svc httpbun1 httpbun2 --ignore-not-found
+	-kubectl -n $(NAMESPACE) delete deploy httpbun1 httpbun2 --ignore-not-found
 	-kubectl delete -f $(NS_FILE) || true
 
 nuke:
