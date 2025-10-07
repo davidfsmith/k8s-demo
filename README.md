@@ -3,27 +3,14 @@
 A minimal demo that deploys two httpbun apps behind the **Helm-installed NGINX Ingress Controller** on Minikube.
 Manual steps come first; a Makefile is provided at the end for shortcuts.
 
+See [EKS.md](./EKS.md) for AWS EKS deployment
+
 ## Prerequisites
 
 - [minikube](https://minikube.sigs.k8s.io/docs/) (Docker driver recommended)
 - [helm](https://helm.sh)
 - [kubectl](https://kubernetes.io/docs/reference/kubectl/kubectl/)
 - [jq](https://jqlang.org) (optional, used in a few examples)
-
-Project structure (relevant bits):
-
-```
-k8s-demo/
-  00-namespace.yaml
-  10-httpbun1-deploy.yaml
-  11-httpbun1-svc.yaml
-  20-httpbun2-deploy.yaml
-  21-httpbun2-svc.yaml
-  30-ingress.yaml
-observability/
-  dashboards/               # JSON dashboards to import into Grafana
-  README.md
-```
 
 ## 1) Start a clean cluster
 
