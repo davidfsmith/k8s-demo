@@ -1,0 +1,34 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: daves-cluster
+  region: eu-west-1
+  version: "1.34"
+
+iam:
+  withOIDC: true
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+
+vpc:
+  manageSharedNodeSecurityGroupRules: true
+
+managedNodeGroups:
+  - name: ng-main
+    instanceType: m5.large
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    privateNetworking: false
+    volumeSize: 20
+    amiFamily: AmazonLinux2
+    labels:
+      role: worker
+    tags:
+      project: ingress-demo
+      owner: daves
+    ssh:
+      allow: false

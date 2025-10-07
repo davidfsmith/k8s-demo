@@ -1,0 +1,40 @@
+# ingress-nginx values (v1.10–v1.11)
+controller:
+  extraArgs:
+    enable-metrics: "true"
+    enable-metrics-labels: "true"
+    metrics-per-ingress: "true"
+    metrics-per-service: "true"
+    metrics-per-location: "true"
+    # metrics-per-host: "true"
+
+# Common settings shared across versions
+controller:
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: false
+    controllerValue: k8s.io/ingress-nginx
+
+  ingressClass: nginx
+
+  service:
+    enabled: true
+    type: LoadBalancer
+    # annotations:
+    #   service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    #   service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    #   service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    # externalTrafficPolicy: Local
+
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      additionalLabels:
+        release: monitoring
+      scrapeInterval: 15s
+
+defaultBackend:
+  enabled: false
